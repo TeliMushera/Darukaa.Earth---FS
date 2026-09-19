@@ -1,23 +1,31 @@
 import json
 import random
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 import jwt
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from geoalchemy2 import Geometry
 from geoalchemy2.shape import from_shape
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from shapely.geometry import shape
-from sqlalchemy import Column, Date, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, func, text
-from sqlalchemy.orm import Session, declarative_base, relationship, sessionmaker
 from pwdlib import PasswordHash
-
-
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from shapely.geometry import shape
+from sqlalchemy import (
+    Column,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    create_engine,
+    func,
+    text,
+)
+from sqlalchemy.orm import Session, declarative_base, relationship, sessionmaker
 
 
 class Settings(BaseSettings):
@@ -143,7 +151,7 @@ def make_token(user_id: int):
 
 
 def current_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
     session: Session = Depends(db),
 ):
     if not credentials:
@@ -151,7 +159,7 @@ def current_user(
     try:
         payload = jwt.decode(credentials.credentials, settings.JWT_SECRET, algorithms=["HS256"])
         user = session.get(User, int(payload["sub"]))
-    except Exception:
+    except (jwt.PyJWTError, KeyError, ValueError, TypeError):
         user = None
     if not user:
         raise HTTPException(status_code=401, detail="Invalid token")
@@ -278,7 +286,7 @@ def create_site(project_id: int, data: SiteIn, user=Depends(current_user), sessi
         geom = shape(data.geometry)
         if geom.geom_type != "Polygon":
             raise ValueError("Polygon required")
-    except Exception:
+    except (ValueError, TypeError, AttributeError):
         raise HTTPException(400, "Invalid polygon geometry")
 
     site = Site(project_id=project_id, name=data.name, location=from_shape(geom, srid=4326), area=0)
